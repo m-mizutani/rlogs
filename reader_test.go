@@ -1,4 +1,4 @@
-package s3logs_test
+package rlogs_test
 
 import (
 	"errors"
@@ -6,10 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/m-mizutani/rlogs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/m-mizutani/s3logs"
 )
 
 type testLog struct {
@@ -40,13 +39,13 @@ func toTestLog(line string) (*testLog, error) {
 
 type testLineParser struct{}
 
-func (x *testLineParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
+func (x *testLineParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
 	log, err := toTestLog(string(msg))
 	if err != nil {
 		return nil, err
 	}
 
-	return []s3logs.LogRecord{{
+	return []rlogs.LogRecord{{
 		Tag:       "test.log",
 		Timestamp: time.Now().UTC(),
 		Entity:    &log,
@@ -55,10 +54,10 @@ func (x *testLineParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
 
 type testFileParser struct{}
 
-func (x *testFileParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
+func (x *testFileParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
 	body := string(msg)
 
-	var logs []s3logs.LogRecord
+	var logs []rlogs.LogRecord
 	for _, line := range strings.Split(body, "\n") {
 		if len(line) == 0 {
 			continue
@@ -69,7 +68,7 @@ func (x *testFileParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
 			return nil, err
 		}
 
-		logs = append(logs, s3logs.LogRecord{
+		logs = append(logs, rlogs.LogRecord{
 			Tag:       "test.log",
 			Timestamp: time.Now().UTC(),
 			Entity:    &log,
@@ -80,8 +79,8 @@ func (x *testFileParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
 }
 
 func TestBasicS3LineReader(t *testing.T) {
-	reader := s3logs.NewReader()
-	reader.AddHandler("s3logs-test", "", &s3logs.S3Lines{}, &testLineParser{})
+	reader := rlogs.NewReader()
+	reader.AddHandler("s3logs-test", "", &rlogs.S3Lines{}, &testLineParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
@@ -92,8 +91,8 @@ func TestBasicS3LineReader(t *testing.T) {
 }
 
 func TestBasicS3FileReader(t *testing.T) {
-	reader := s3logs.NewReader()
-	reader.AddHandler("s3logs-test", "", &s3logs.S3File{}, &testFileParser{})
+	reader := rlogs.NewReader()
+	reader.AddHandler("s3logs-test", "", &rlogs.S3File{}, &testFileParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
@@ -104,8 +103,8 @@ func TestBasicS3FileReader(t *testing.T) {
 }
 
 func TestBasicS3GzipReader(t *testing.T) {
-	reader := s3logs.NewReader()
-	reader.AddHandler("s3logs-test", "", &s3logs.S3GzipLines{}, &testLineParser{})
+	reader := rlogs.NewReader()
+	reader.AddHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &testLineParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test2.log.gz") {

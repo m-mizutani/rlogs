@@ -1,4 +1,4 @@
-package s3logs
+package rlogs
 
 import "strings"
 

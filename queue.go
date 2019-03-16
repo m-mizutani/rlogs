@@ -1,4 +1,4 @@
-package s3logs
+package rlogs
 
 type msgQueue struct {
 	message []byte
