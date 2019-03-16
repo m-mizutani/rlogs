@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"io"
 	"io/ioutil"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -14,9 +13,10 @@ import (
 	"github.com/pkg/errors"
 )
 
-type S3Lines struct{}
+var BufferInitSize = 1024 * 1024
+var BufferMaxSize = 128 * 1024 * 1024
 
-func getS3Response(region, s3bucket, s3key string) (*s3.GetObjectOutput, error) {
+func getS3Reader(region, s3bucket, s3key string) (io.Reader, error) {
 	ssn := session.Must(session.NewSession(&aws.Config{
 		Region: aws.String(region),
 	}))
@@ -30,8 +30,19 @@ func getS3Response(region, s3bucket, s3key string) (*s3.GetObjectOutput, error) 
 		return nil, errors.Wrap(err, "Fail to get object")
 	}
 
-	return resp, nil
+	if resp.ContentType != nil && *resp.ContentType == "application/x-gzip" {
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, errors.Wrap(err, "Fail to decompress gzip")
+		}
+		return gr, nil
+	}
+
+	return resp.Body, nil
 }
+
+// S3Lines is a loader to fetch S3 object and pass data line by line to parser.
+type S3Lines struct{}
 
 func (x *S3Lines) Load(region, s3bucket, s3key string) chan *msgQueue {
 	chMsg := make(chan *msgQueue)
@@ -39,27 +50,14 @@ func (x *S3Lines) Load(region, s3bucket, s3key string) chan *msgQueue {
 	go func() {
 		defer close(chMsg)
 
-		resp, err := getS3Response(region, s3bucket, s3key)
+		r, err := getS3Reader(region, s3bucket, s3key)
 		if err != nil {
 			chMsg <- &msgQueue{err: err}
 			return
 		}
 
-		var r io.Reader
-		if resp.ContentType != nil && *resp.ContentType == "application/x-gzip" {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to decompress gzip")}
-				return
-			}
-			r = gr
-		} else {
-			r = resp.Body
-		}
-
 		scanner := bufio.NewScanner(r)
-		var mega int = 1024 * 1024
-		scanner.Buffer(make([]byte, mega), 256*mega)
+		scanner.Buffer(make([]byte, BufferInitSize), BufferMaxSize)
 
 		for scanner.Scan() {
 			chMsg <- &msgQueue{message: []byte(scanner.Text())}
@@ -69,6 +67,7 @@ func (x *S3Lines) Load(region, s3bucket, s3key string) chan *msgQueue {
 	return chMsg
 }
 
+// S3File is a loader to fetch S3 object and pass all data directly to parser.
 type S3File struct{}
 
 func (x *S3File) Load(region, s3bucket, s3key string) chan *msgQueue {
@@ -77,22 +76,77 @@ func (x *S3File) Load(region, s3bucket, s3key string) chan *msgQueue {
 	go func() {
 		defer close(chMsg)
 
-		resp, err := getS3Response(region, s3bucket, s3key)
+		r, err := getS3Reader(region, s3bucket, s3key)
 		if err != nil {
 			chMsg <- &msgQueue{err: err}
 			return
 		}
 
-		var r io.Reader
-		if strings.HasSuffix(s3key, ".gz") {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to decompress gzip")}
+		data, err := ioutil.ReadAll(r)
+		if err != nil {
+			chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to read data")}
+			return
+		}
+
+		chMsg <- &msgQueue{message: data}
+	}()
+
+	return chMsg
+}
+
+// S3GzipLines is a loader to fetch gzipped S3 object and pass all data directly to parser.
+type S3GzipLines struct{}
+
+func (x *S3GzipLines) Load(region, s3bucket, s3key string) chan *msgQueue {
+	chMsg := make(chan *msgQueue)
+
+	go func() {
+		defer close(chMsg)
+
+		r, err := getS3Reader(region, s3bucket, s3key)
+		if err != nil {
+			chMsg <- &msgQueue{err: err}
+			return
+		}
+
+		if _, ok := r.(*gzip.Reader); !ok {
+			if r, err = gzip.NewReader(r); err != nil {
+				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to create gzip reader")}
 				return
 			}
-			r = gr
-		} else {
-			r = resp.Body
+		}
+
+		scanner := bufio.NewScanner(r)
+		scanner.Buffer(make([]byte, BufferInitSize), BufferMaxSize)
+
+		for scanner.Scan() {
+			chMsg <- &msgQueue{message: []byte(scanner.Text())}
+		}
+	}()
+
+	return chMsg
+}
+
+// S3File is a loader to fetch S3 object and pass all data directly to parser.
+type S3GzipFile struct{}
+
+func (x *S3GzipFile) Load(region, s3bucket, s3key string) chan *msgQueue {
+	chMsg := make(chan *msgQueue)
+
+	go func() {
+		defer close(chMsg)
+
+		r, err := getS3Reader(region, s3bucket, s3key)
+		if err != nil {
+			chMsg <- &msgQueue{err: err}
+			return
+		}
+
+		if _, ok := r.(*gzip.Reader); !ok {
+			if r, err = gzip.NewReader(r); err != nil {
+				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to create gzip reader")}
+				return
+			}
 		}
 
 		data, err := ioutil.ReadAll(r)

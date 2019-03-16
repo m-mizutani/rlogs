@@ -12,7 +12,6 @@ import (
 	"github.com/m-mizutani/s3logs"
 )
 
-type testParser struct{}
 type testLog struct {
 	month string
 	day   string
@@ -22,9 +21,8 @@ type testLog struct {
 	msg   string
 }
 
-func (x *testParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
-	s := string(msg)
-	arr := strings.Split(s, " ")
+func toTestLog(line string) (*testLog, error) {
+	arr := strings.Split(line, " ")
 	if len(arr) < 6 {
 		return nil, errors.New("message is too short")
 	}
@@ -37,6 +35,17 @@ func (x *testParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
 		msg:   strings.Join(arr[5:len(arr)], " "),
 	}
 
+	return &log, nil
+}
+
+type testLineParser struct{}
+
+func (x *testLineParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
+	log, err := toTestLog(string(msg))
+	if err != nil {
+		return nil, err
+	}
+
 	return []s3logs.LogRecord{{
 		Tag:       "test.log",
 		Timestamp: time.Now().UTC(),
@@ -44,12 +53,62 @@ func (x *testParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
 	}}, nil
 }
 
-func TestBasicS3Reader(t *testing.T) {
+type testFileParser struct{}
+
+func (x *testFileParser) Parse(msg []byte) ([]s3logs.LogRecord, error) {
+	body := string(msg)
+
+	var logs []s3logs.LogRecord
+	for _, line := range strings.Split(body, "\n") {
+		if len(line) == 0 {
+			continue
+		}
+
+		log, err := toTestLog(line)
+		if err != nil {
+			return nil, err
+		}
+
+		logs = append(logs, s3logs.LogRecord{
+			Tag:       "test.log",
+			Timestamp: time.Now().UTC(),
+			Entity:    &log,
+		})
+	}
+
+	return logs, nil
+}
+
+func TestBasicS3LineReader(t *testing.T) {
 	reader := s3logs.NewReader()
-	reader.AddHandler("s3logs-test", "", &s3logs.S3Lines{}, &testParser{})
+	reader.AddHandler("s3logs-test", "", &s3logs.S3Lines{}, &testLineParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
+		count++
+		require.NoError(t, q.Error)
+	}
+	assert.Equal(t, 10, count)
+}
+
+func TestBasicS3FileReader(t *testing.T) {
+	reader := s3logs.NewReader()
+	reader.AddHandler("s3logs-test", "", &s3logs.S3File{}, &testFileParser{})
+
+	count := 0
+	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
+		count++
+		require.NoError(t, q.Error)
+	}
+	assert.Equal(t, 10, count)
+}
+
+func TestBasicS3GzipReader(t *testing.T) {
+	reader := s3logs.NewReader()
+	reader.AddHandler("s3logs-test", "", &s3logs.S3GzipLines{}, &testLineParser{})
+
+	count := 0
+	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test2.log.gz") {
 		count++
 		require.NoError(t, q.Error)
 	}
