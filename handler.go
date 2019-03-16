@@ -2,44 +2,22 @@ package rlogs
 
 import "strings"
 
-type Handler struct {
+type Handler interface {
+	Match(s3bucet, s3key string) bool
+	Loader() LogLoader
+	Parser() LogParser
+}
+
+type S3PrefixHandler struct {
 	S3Bucket string
 	S3Prefix string
-	Loader   LogLoader
-	Parser   LogParser
+	S3Loader LogLoader
+	S3Parser LogParser
 }
 
-func (x Handler) match(s3bucket, s3key string) bool {
+func (x *S3PrefixHandler) Loader() LogLoader { return x.S3Loader }
+func (x *S3PrefixHandler) Parser() LogParser { return x.S3Parser }
+
+func (x S3PrefixHandler) Match(s3bucket, s3key string) bool {
 	return (x.S3Bucket == s3bucket && strings.HasPrefix(s3key, x.S3Prefix))
-}
-
-func (x *Handler) bind(chLog chan *LogQueue, region, s3bucket, s3key string) {
-	chMsg := x.Loader.Load(region, s3bucket, s3key)
-
-	for q := range chMsg {
-		if q == nil { // closed
-			return
-		}
-
-		if q.err != nil {
-			chLog <- &LogQueue{Error: q.err}
-			return
-		}
-
-		logs, err := x.Parser.Parse(q.message)
-		if err != nil {
-			chLog <- &LogQueue{Error: err}
-			return
-		}
-
-		rawMsg := []byte(q.message)
-		for idx := range logs {
-			logs[idx].Raw = rawMsg
-			if logs[idx].Encodable == nil {
-				logs[idx].Encodable = logs[idx].Entity
-			}
-
-			chLog <- &LogQueue{Record: &logs[idx]}
-		}
-	}
 }

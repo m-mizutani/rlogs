@@ -1,12 +1,14 @@
 package rlogs_test
 
 import (
-	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/m-mizutani/rlogs"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,7 +82,7 @@ func (x *testFileParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
 
 func TestBasicS3LineReader(t *testing.T) {
 	reader := rlogs.NewReader()
-	reader.AddHandler("s3logs-test", "", &rlogs.S3Lines{}, &testLineParser{})
+	reader.DefineHandler("s3logs-test", "", &rlogs.S3Lines{}, &testLineParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
@@ -92,7 +94,7 @@ func TestBasicS3LineReader(t *testing.T) {
 
 func TestBasicS3FileReader(t *testing.T) {
 	reader := rlogs.NewReader()
-	reader.AddHandler("s3logs-test", "", &rlogs.S3File{}, &testFileParser{})
+	reader.DefineHandler("s3logs-test", "", &rlogs.S3File{}, &testFileParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
@@ -104,7 +106,7 @@ func TestBasicS3FileReader(t *testing.T) {
 
 func TestBasicS3GzipReader(t *testing.T) {
 	reader := rlogs.NewReader()
-	reader.AddHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &testLineParser{})
+	reader.DefineHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &testLineParser{})
 
 	count := 0
 	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test2.log.gz") {
@@ -112,4 +114,54 @@ func TestBasicS3GzipReader(t *testing.T) {
 		require.NoError(t, q.Error)
 	}
 	assert.Equal(t, 10, count)
+}
+
+type myParser struct {
+	regex *regexp.Regexp
+}
+type myLog struct {
+	ipAddr   string
+	userName string
+	port     string
+}
+
+func newMyParser() *myParser {
+	return &myParser{
+		regex: regexp.MustCompile(`Invalid user (\S+) from (\S+) port (\d+)`),
+	}
+}
+
+func (x *myParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
+	line := string(msg)
+
+	resp := x.regex.FindStringSubmatch(line)
+	if len(resp) == 0 {
+		return nil, nil
+	}
+
+	log := myLog{
+		userName: resp[1],
+		ipAddr:   resp[2],
+		port:     resp[3],
+	}
+
+	return []rlogs.LogRecord{{
+		Tag:       "my.log",
+		Timestamp: time.Now().UTC(),
+		Entity:    &log,
+	}}, nil
+}
+
+func Example() {
+
+	reader := rlogs.NewReader()
+	reader.DefineHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &myParser{})
+
+	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test3.log") {
+		if log, ok := q.Record.Entity.(*myLog); ok {
+			if log.userName == "root" {
+				fmt.Println("found SSH root access challenge")
+			}
+		}
+	}
 }
