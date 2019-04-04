@@ -77,3 +77,25 @@ func (x *Reader) Load(region, s3bucket, s3key string) chan *LogQueue {
 
 	return chLog
 }
+
+// Read loads and provides log data for one shot.
+func Read(region, s3bucket, s3key string, loader LogLoader, parser LogParser) chan *LogQueue {
+	chLog := make(chan *LogQueue)
+
+	go func() {
+		defer close(chLog)
+
+		handler := S3PrefixHandler{
+			S3Bucket: s3bucket,
+			S3Prefix: s3key,
+			S3Parser: parser,
+			S3Loader: loader,
+		}
+
+		bind(chLog, &handler, region, s3bucket, s3key)
+
+		chLog <- &LogQueue{Error: errors.New("No mathced entry")}
+	}()
+
+	return chLog
+}
