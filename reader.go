@@ -93,8 +93,7 @@ func Read(region, s3bucket, s3key string, loader LogLoader, parser LogParser) ch
 		}
 
 		bind(chLog, &handler, region, s3bucket, s3key)
-
-		chLog <- &LogQueue{Error: errors.New("No mathced entry")}
+		return
 	}()
 
 	return chLog
