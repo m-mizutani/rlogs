@@ -32,3 +32,6 @@ type MessageQueue struct {
 	Seq   int
 	Src   LogSource
 }
+
+// String function just converts string to string pointer
+func String(s string) *string { return &s }
