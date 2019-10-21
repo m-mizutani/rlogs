@@ -2,166 +2,136 @@ package rlogs_test
 
 import (
 	"fmt"
-	"regexp"
+	"log"
 	"strings"
 	"testing"
-	"time"
 
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/m-mizutani/rlogs"
-	"github.com/pkg/errors"
+	"github.com/m-mizutani/rlogs/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type testLog struct {
-	month string
-	day   string
-	tm    string
-	host  string
-	proc  string
-	msg   string
-}
+type dummyS3ClientForBasicReader struct{}
 
-func toTestLog(line string) (*testLog, error) {
-	arr := strings.Split(line, " ")
-	if len(arr) < 6 {
-		return nil, errors.New("message is too short")
-	}
-	log := testLog{
-		month: arr[0],
-		day:   arr[1],
-		tm:    arr[2],
-		host:  arr[3],
-		proc:  arr[4],
-		msg:   strings.Join(arr[5:len(arr)], " "),
+func (x *dummyS3ClientForBasicReader) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	if *input.Bucket != "some-bucket" {
+		return nil, fmt.Errorf("invalid bucket")
 	}
 
-	return &log, nil
-}
-
-type testLineParser struct{}
-
-func (x *testLineParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
-	log, err := toTestLog(string(msg))
-	if err != nil {
-		return nil, err
-	}
-
-	return []rlogs.LogRecord{{
-		Tag:       "test.log",
-		Timestamp: time.Now().UTC(),
-		Entity:    &log,
-	}}, nil
-}
-
-type testFileParser struct{}
-
-func (x *testFileParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
-	body := string(msg)
-
-	var logs []rlogs.LogRecord
-	for _, line := range strings.Split(body, "\n") {
-		if len(line) == 0 {
-			continue
+	switch *input.Key {
+	case "magic/history.json":
+		lines := []string{
+			`{"ts":"1902-10-10T10:00:00","name":"?","number":1}`,
+			`{"ts":"1929-10-10T10:00:00","name":"Parallel Worlds","number":2}`,
+			`{"ts":"1954-10-10T10:00:00","name":"Heaven's Feel","number":3}`,
+			`{"ts":"1983-10-10T10:00:00","name":"?","number":4}`,
+			`{"ts":"1991-10-10T10:00:00","name":"Blue","number":5}`,
 		}
+		return &s3.GetObjectOutput{
+			Body: toReadCloser(strings.Join(lines, "\n")),
+		}, nil
 
-		log, err := toTestLog(line)
-		if err != nil {
-			return nil, err
+	case "http/log.json":
+		lines := []string{
+			`{"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}`,
+			`{"ts":"2019-10-10T10:00:02","src":"10.2.3.4","port":45678,"path":"/world"}`,
 		}
+		return &s3.GetObjectOutput{
+			Body: toReadCloser(strings.Join(lines, "\n")),
+		}, nil
 
-		logs = append(logs, rlogs.LogRecord{
-			Tag:       "test.log",
-			Timestamp: time.Now().UTC(),
-			Entity:    &log,
-		})
+	default:
+		return nil, fmt.Errorf("Key not found")
 	}
-
-	return logs, nil
 }
 
-func TestBasicS3LineReader(t *testing.T) {
-	reader := rlogs.NewReader()
-	reader.DefineHandler("s3logs-test", "", &rlogs.S3Lines{}, &testLineParser{})
+func TestBasicReader(t *testing.T) {
+	dummy := dummyS3ClientForBasicReader{}
+	rlogs.InjectNewS3Client(&dummy)
+	defer rlogs.FixNewS3Client()
 
-	count := 0
-	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
-		count++
+	reader := rlogs.BasicReader{
+		LogEntries: []*rlogs.LogEntry{
+			{
+				Psr: &parser.JSON{
+					Tag:             "ts",
+					TimestampField:  rlogs.String("ts"),
+					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+				},
+				Ldr: &rlogs.S3LineLoader{},
+				Src: &rlogs.AwsS3LogSource{
+					Region: "some-region",
+					Bucket: "some-bucket",
+					Key:    "magic/",
+				},
+			},
+		},
+	}
+
+	ch := reader.Read(&rlogs.AwsS3LogSource{
+		Region: "some-region",
+		Bucket: "some-bucket",
+		Key:    "magic/history.json",
+	})
+	var logs []*rlogs.LogRecord
+	for q := range ch {
 		require.NoError(t, q.Error)
-	}
-	assert.Equal(t, 10, count)
-}
-
-func TestBasicS3FileReader(t *testing.T) {
-	reader := rlogs.NewReader()
-	reader.DefineHandler("s3logs-test", "", &rlogs.S3File{}, &testFileParser{})
-
-	count := 0
-	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test1.log") {
-		count++
-		require.NoError(t, q.Error)
-	}
-	assert.Equal(t, 10, count)
-}
-
-func TestBasicS3GzipReader(t *testing.T) {
-	reader := rlogs.NewReader()
-	reader.DefineHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &testLineParser{})
-
-	count := 0
-	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test2.log.gz") {
-		count++
-		require.NoError(t, q.Error)
-	}
-	assert.Equal(t, 10, count)
-}
-
-type myParser struct {
-	regex *regexp.Regexp
-}
-type myLog struct {
-	ipAddr   string
-	userName string
-	port     string
-}
-
-func newMyParser() *myParser {
-	return &myParser{
-		regex: regexp.MustCompile(`Invalid user (\S+) from (\S+) port (\d+)`),
-	}
-}
-
-func (x *myParser) Parse(msg []byte) ([]rlogs.LogRecord, error) {
-	line := string(msg)
-
-	resp := x.regex.FindStringSubmatch(line)
-	if len(resp) == 0 {
-		return nil, nil
+		logs = append(logs, q.Log)
 	}
 
-	log := myLog{
-		userName: resp[1],
-		ipAddr:   resp[2],
-		port:     resp[3],
-	}
-
-	return []rlogs.LogRecord{{
-		Tag:       "my.log",
-		Timestamp: time.Now().UTC(),
-		Entity:    &log,
-	}}, nil
+	assert.Equal(t, 5, len(logs))
+	v4, ok := logs[4].Values.(map[string]interface{})
+	assert.True(t, ok)
+	n4, ok := v4["name"].(string)
+	assert.True(t, ok)
+	assert.Equal(t, "Blue", n4)
 }
 
-func Example() {
+func ExampleBasicReader() {
+	// To avoid accessing actual S3.
+	dummy := dummyS3ClientForBasicReader{}
+	rlogs.InjectNewS3Client(&dummy)
+	defer rlogs.FixNewS3Client()
 
-	reader := rlogs.NewReader()
-	reader.DefineHandler("s3logs-test", "", &rlogs.S3GzipLines{}, &myParser{})
+	// Example is below
+	reader := rlogs.BasicReader{
+		LogEntries: []*rlogs.LogEntry{
+			{
+				Psr: &parser.JSON{
+					Tag:             "ts",
+					TimestampField:  rlogs.String("ts"),
+					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+				},
+				Ldr: &rlogs.S3LineLoader{},
+				Src: &rlogs.AwsS3LogSource{
+					Region: "some-region",
+					Bucket: "some-bucket",
+					Key:    "http/",
+				},
+			},
+		},
+	}
 
-	for q := range reader.Load("ap-northeast-1", "s3logs-test", "test3.log") {
-		if log, ok := q.Record.Entity.(*myLog); ok {
-			if log.userName == "root" {
-				fmt.Println("found SSH root access challenge")
-			}
+	// s3://some-bucket/http/log.json is following:
+	// {"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}
+	// {"ts":"2019-10-10T10:00:02","src":"10.2.3.4","port":45678,"path":"/world"}
+
+	ch := reader.Read(&rlogs.AwsS3LogSource{
+		Region: "some-region",
+		Bucket: "some-bucket",
+		Key:    "http/log.json",
+	})
+
+	for q := range ch {
+		if q.Error != nil {
+			log.Fatal(q.Error)
 		}
+		values := q.Log.Values.(map[string]interface{})
+		fmt.Printf("[log] tag=%s time=%s src=%v\n", q.Log.Tag, q.Log.Timestamp, values["src"])
 	}
+	// Output:
+	// [log] tag=ts time=2019-10-10 10:00:00 +0000 UTC src=10.1.2.3
+	// [log] tag=ts time=2019-10-10 10:00:02 +0000 UTC src=10.2.3.4
 }

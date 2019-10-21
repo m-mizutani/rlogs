@@ -1,100 +1,70 @@
 package rlogs
 
-import "errors"
+import (
+	"fmt"
 
-type LogParser interface {
-	Parse(msg []byte) ([]LogRecord, error)
+	"github.com/pkg/errors"
+)
+
+// Reader is interface of log load and parse
+type Reader interface {
+	Read(src LogSource) chan *LogQueue
 }
 
-type LogLoader interface {
-	Load(region, s3bucket, s3key string) chan *msgQueue
+// BasicReader provides basic structured Reader with naive implementation
+type BasicReader struct {
+	LogEntries []*LogEntry
+	QueueSize  int
 }
 
-type Reader struct {
-	Handlers []Handler
+// LogEntry is a pair of Loader and Paresr
+type LogEntry struct {
+	Src LogSource
+	Ldr Loader
+	Psr Parser
 }
 
-func NewReader() *Reader {
-	return &Reader{}
-}
-
-func (x *Reader) DefineHandler(s3bucket, s3prefix string, loader LogLoader, parser LogParser) {
-	h := S3PrefixHandler{
-		S3Bucket: s3bucket,
-		S3Prefix: s3prefix,
-		S3Parser: parser,
-		S3Loader: loader,
+func (x *BasicReader) Read(src LogSource) chan *LogQueue {
+	queueSize := 128
+	if x.QueueSize > 0 {
+		queueSize = x.QueueSize
 	}
-	x.Handlers = append(x.Handlers, &h)
-}
 
-func bind(chLog chan *LogQueue, handler Handler, region, s3bucket, s3key string) {
-	chMsg := handler.Loader().Load(region, s3bucket, s3key)
-
-	for q := range chMsg {
-		if q == nil { // closed
-			return
-		}
-
-		if q.err != nil {
-			chLog <- &LogQueue{Error: q.err}
-			return
-		}
-
-		logs, err := handler.Parser().Parse(q.message)
-		if err != nil {
-			chLog <- &LogQueue{Error: err}
-			return
-		}
-
-		rawMsg := []byte(q.message)
-		for idx := range logs {
-			logs[idx].Raw = rawMsg
-			if logs[idx].Encodable == nil {
-				logs[idx].Encodable = logs[idx].Entity
-			}
-
-			chLog <- &LogQueue{Record: &logs[idx]}
-		}
-	}
-}
-
-func (x *Reader) Load(region, s3bucket, s3key string) chan *LogQueue {
-	chLog := make(chan *LogQueue)
-
+	ch := make(chan *LogQueue, queueSize)
 	go func() {
-		defer close(chLog)
+		defer close(ch)
 
-		for _, handler := range x.Handlers {
-			if handler.Match(s3bucket, s3key) {
-				bind(chLog, handler, region, s3bucket, s3key)
+		var entry *LogEntry
+		for _, e := range x.LogEntries {
+			if e.Src.Contains(src) {
+				entry = e
+				break
+			}
+		}
+
+		if entry == nil {
+			ch <- &LogQueue{Error: fmt.Errorf("No matched LogEntry for %v", src)}
+			return
+		}
+
+		msgch := entry.Ldr.Load(src)
+		for msg := range msgch {
+			if msg.Error != nil {
+				ch <- &LogQueue{Error: errors.Wrap(msg.Error, "Fail to load log message")}
 				return
 			}
-		}
 
-		chLog <- &LogQueue{Error: errors.New("No mathced entry")}
+			logs, err := entry.Psr.Parse(msg)
+			if err != nil {
+				ch <- &LogQueue{Error: errors.Wrap(msg.Error, "Fail to parse log message")}
+				return
+			}
+
+			for i := range logs {
+				ch <- &LogQueue{Log: logs[i]}
+			}
+		}
 	}()
 
-	return chLog
-}
-
-// Read loads and provides log data for one shot.
-func Read(region, s3bucket, s3key string, loader LogLoader, parser LogParser) chan *LogQueue {
-	chLog := make(chan *LogQueue)
-
-	go func() {
-		defer close(chLog)
-
-		handler := S3PrefixHandler{
-			S3Bucket: s3bucket,
-			S3Prefix: s3key,
-			S3Parser: parser,
-			S3Loader: loader,
-		}
-
-		bind(chLog, &handler, region, s3bucket, s3key)
-		return
-	}()
-
-	return chLog
+	return ch
 }

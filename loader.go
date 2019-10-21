@@ -2,160 +2,145 @@ package rlogs
 
 import (
 	"bufio"
-
 	"compress/gzip"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/pkg/errors"
 )
 
-var BufferInitSize = 1024 * 1024
-var BufferMaxSize = 128 * 1024 * 1024
+// Loader downloads object from cloud object storage and create MessageQueue(s)
+type Loader interface {
+	Load(src LogSource) chan *MessageQueue
+}
 
-func getS3Reader(region, s3bucket, s3key string) (io.Reader, error) {
-	ssn := session.Must(session.NewSession(&aws.Config{
-		Region: aws.String(region),
-	}))
-	srv := s3.New(ssn)
-	resp, err := srv.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(s3bucket),
-		Key:    aws.String(s3key),
+func getObjectReader(src LogSource) (io.ReadCloser, error) {
+	s3src, ok := src.(*AwsS3LogSource)
+	if !ok {
+		return nil, fmt.Errorf("S3LineLoader accepts only AwsS3LogSource: %v", src)
+	}
+
+	s3client := newS3Client(s3src.Region)
+	resp, err := s3client.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(s3src.Bucket),
+		Key:    aws.String(s3src.Key),
 	})
 
 	if err != nil {
 		return nil, errors.Wrap(err, "Fail to get object")
 	}
 
-	if resp.ContentType != nil && *resp.ContentType == "application/x-gzip" {
+	var r io.ReadCloser
+	if resp.ContentType == nil {
+		r = resp.Body
+	} else if *resp.ContentType == "application/x-gzip" ||
+		(*resp.ContentType == "binary/octet-stream" &&
+			strings.HasSuffix(s3src.Key, ".gz")) {
 		gr, err := gzip.NewReader(resp.Body)
 		if err != nil {
-			return nil, errors.Wrap(err, "Fail to decompress gzip")
+			return nil, errors.Wrap(err, "Fail to create a new gzip reader")
 		}
-		return gr, nil
+		r = gr
+	} else {
+		r = resp.Body
 	}
 
-	return resp.Body, nil
+	return r, nil
 }
 
-// S3Lines is a loader to fetch S3 object and pass data line by line to parser.
-type S3Lines struct{}
+const (
+	defaultS3LineLoaderScanBufferSize  = 1 * 1024 * 1024   // 1 MB
+	defaultS3LineLoaderScanBufferLimit = 128 * 1024 * 1024 // 128 MB
+)
 
-func (x *S3Lines) Load(region, s3bucket, s3key string) chan *msgQueue {
-	chMsg := make(chan *msgQueue)
+// S3LineLoader is for line delimitered log file on AWS S3
+type S3LineLoader struct {
+	ScanBufferSize  int
+	ScanBufferLimit int
+}
+
+// Load of S3LineLoader reads a log object line by line
+func (x *S3LineLoader) Load(src LogSource) chan *MessageQueue {
+	chMsg := make(chan *MessageQueue)
 
 	go func() {
 		defer close(chMsg)
 
-		r, err := getS3Reader(region, s3bucket, s3key)
+		r, err := getObjectReader(src)
 		if err != nil {
-			chMsg <- &msgQueue{err: err}
+			chMsg <- &MessageQueue{Error: err}
 			return
 		}
+		defer r.Close()
 
 		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, BufferInitSize), BufferMaxSize)
 
+		var bufSize int = defaultS3LineLoaderScanBufferSize
+		if x.ScanBufferSize > 0 {
+			bufSize = x.ScanBufferSize
+		}
+		var bufLimit int = defaultS3LineLoaderScanBufferLimit
+		if x.ScanBufferLimit > 0 {
+			bufLimit = x.ScanBufferLimit
+		}
+		scanner.Buffer(make([]byte, bufSize), bufLimit)
+
+		seq := 0
 		for scanner.Scan() {
-			chMsg <- &msgQueue{message: []byte(scanner.Text())}
-		}
-	}()
+			line := scanner.Bytes()
+			data := make([]byte, len(line))
+			copy(data, line)
 
-	return chMsg
-}
-
-// S3File is a loader to fetch S3 object and pass all data directly to parser.
-type S3File struct{}
-
-func (x *S3File) Load(region, s3bucket, s3key string) chan *msgQueue {
-	chMsg := make(chan *msgQueue)
-
-	go func() {
-		defer close(chMsg)
-
-		r, err := getS3Reader(region, s3bucket, s3key)
-		if err != nil {
-			chMsg <- &msgQueue{err: err}
-			return
-		}
-
-		data, err := ioutil.ReadAll(r)
-		if err != nil {
-			chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to read data")}
-			return
-		}
-
-		chMsg <- &msgQueue{message: data}
-	}()
-
-	return chMsg
-}
-
-// S3GzipLines is a loader to fetch gzipped S3 object and pass all data directly to parser.
-type S3GzipLines struct{}
-
-func (x *S3GzipLines) Load(region, s3bucket, s3key string) chan *msgQueue {
-	chMsg := make(chan *msgQueue)
-
-	go func() {
-		defer close(chMsg)
-
-		r, err := getS3Reader(region, s3bucket, s3key)
-		if err != nil {
-			chMsg <- &msgQueue{err: err}
-			return
-		}
-
-		if _, ok := r.(*gzip.Reader); !ok {
-			if r, err = gzip.NewReader(r); err != nil {
-				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to create gzip reader")}
-				return
+			chMsg <- &MessageQueue{
+				Raw: data,
+				Seq: seq,
+				Src: src,
 			}
+
+			seq++
 		}
 
-		scanner := bufio.NewScanner(r)
-		scanner.Buffer(make([]byte, BufferInitSize), BufferMaxSize)
-
-		for scanner.Scan() {
-			chMsg <- &msgQueue{message: []byte(scanner.Text())}
+		if err := scanner.Err(); err != nil {
+			chMsg <- &MessageQueue{Error: err}
+			return
 		}
 	}()
 
 	return chMsg
 }
 
-// S3File is a loader to fetch S3 object and pass all data directly to parser.
-type S3GzipFile struct{}
+// S3FileLoader is for whole file data (not line delimitered) on AWS S3
+type S3FileLoader struct{}
 
-func (x *S3GzipFile) Load(region, s3bucket, s3key string) chan *msgQueue {
-	chMsg := make(chan *msgQueue)
+// Load of S3LineLoader reads a log object as one log message
+func (x *S3FileLoader) Load(src LogSource) chan *MessageQueue {
+	chMsg := make(chan *MessageQueue)
 
 	go func() {
 		defer close(chMsg)
 
-		r, err := getS3Reader(region, s3bucket, s3key)
+		r, err := getObjectReader(src)
 		if err != nil {
-			chMsg <- &msgQueue{err: err}
+			chMsg <- &MessageQueue{Error: err}
+			return
+		}
+		defer r.Close()
+
+		raw, err := ioutil.ReadAll(r)
+		if err != nil {
+			chMsg <- &MessageQueue{Error: errors.Wrap(err, "Fail to read S3 object data")}
 			return
 		}
 
-		if _, ok := r.(*gzip.Reader); !ok {
-			if r, err = gzip.NewReader(r); err != nil {
-				chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to create gzip reader")}
-				return
-			}
+		chMsg <- &MessageQueue{
+			Raw: raw,
+			Seq: 0,
+			Src: src,
 		}
-
-		data, err := ioutil.ReadAll(r)
-		if err != nil {
-			chMsg <- &msgQueue{err: errors.Wrap(err, "Fail to read data")}
-			return
-		}
-
-		chMsg <- &msgQueue{message: data}
 	}()
 
 	return chMsg
