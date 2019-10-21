@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/m-mizutani/rlogs"
+	"github.com/m-mizutani/rlogs/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -54,7 +55,7 @@ func TestBasicReader(t *testing.T) {
 	reader := rlogs.BasicReader{
 		LogEntries: []*rlogs.LogEntry{
 			{
-				Psr: &rlogs.JSONParser{
+				Psr: &parser.JSON{
 					Tag:             "ts",
 					TimestampField:  rlogs.String("ts"),
 					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
@@ -98,7 +99,7 @@ func ExampleBasicReader() {
 	reader := rlogs.BasicReader{
 		LogEntries: []*rlogs.LogEntry{
 			{
-				Psr: &rlogs.JSONParser{
+				Psr: &parser.JSON{
 					Tag:             "ts",
 					TimestampField:  rlogs.String("ts"),
 					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),

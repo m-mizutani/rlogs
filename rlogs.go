@@ -33,5 +33,10 @@ type MessageQueue struct {
 	Src   LogSource
 }
 
+// Parser converts raw log message to LogRecord(s)
+type Parser interface {
+	Parse(msg *MessageQueue) ([]*LogRecord, error)
+}
+
 // String function just converts string to string pointer
 func String(s string) *string { return &s }

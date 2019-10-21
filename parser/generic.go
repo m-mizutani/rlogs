@@ -1,20 +1,16 @@
-package rlogs
+package parser
 
 import (
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/m-mizutani/rlogs"
 	"github.com/pkg/errors"
 )
 
-// Parser converts raw log message to LogRecord(s)
-type Parser interface {
-	Parse(msg *MessageQueue) ([]*LogRecord, error)
-}
-
-// JSONParser is basic json log parser.
-type JSONParser struct {
+// JSON is basic json log parser.
+type JSON struct {
 	Tag                string
 	UnixtimeField      *string
 	UnixtimeMilliField *string
@@ -22,10 +18,10 @@ type JSONParser struct {
 	TimestampFormat    *string
 }
 
-// Parse of JSONParser parses a json formatted log message.
+// Parse of JSON parses a json formatted log message.
 // The parser assumes that json of log message has string map structure.
 // Then, array based json format (e.g. AWS CloudTrail) can not be accepted.
-func (x *JSONParser) Parse(msg *MessageQueue) ([]*LogRecord, error) {
+func (x *JSON) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
 	var value map[string]interface{}
 	if err := json.Unmarshal(msg.Raw, &value); err != nil {
 		return nil, errors.Wrapf(err, "Fail to unmarshal log message: %v", msg)
@@ -61,7 +57,7 @@ func (x *JSONParser) Parse(msg *MessageQueue) ([]*LogRecord, error) {
 		return nil, fmt.Errorf("No timestamp field arguments. One of UnixtimeField, UnixtimeMilliField and TimestampField is required")
 	}
 
-	return []*LogRecord{
+	return []*rlogs.LogRecord{
 		{
 			Tag:       x.Tag,
 			Timestamp: t,
