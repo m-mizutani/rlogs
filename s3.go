@@ -13,6 +13,9 @@ type s3Client interface {
 var newS3Client = newAwsS3Client
 
 func newAwsS3Client(region string) s3Client {
-	ssn := session.New(&aws.Config{Region: aws.String(region)})
+	ssn := session.Must(session.NewSession(&aws.Config{
+		Region: aws.String(region),
+	}))
+
 	return s3.New(ssn)
 }
