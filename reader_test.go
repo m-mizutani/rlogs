@@ -55,12 +55,14 @@ func TestBasicReader(t *testing.T) {
 	reader := rlogs.BasicReader{
 		LogEntries: []*rlogs.LogEntry{
 			{
-				Psr: &parser.JSON{
-					Tag:             "ts",
-					TimestampField:  rlogs.String("ts"),
-					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+				Pipe: rlogs.Pipeline{
+					Psr: &parser.JSON{
+						Tag:             "ts",
+						TimestampField:  rlogs.String("ts"),
+						TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+					},
+					Ldr: &rlogs.S3LineLoader{},
 				},
-				Ldr: &rlogs.S3LineLoader{},
 				Src: &rlogs.AwsS3LogSource{
 					Region: "some-region",
 					Bucket: "some-bucket",
@@ -99,12 +101,14 @@ func ExampleBasicReader() {
 	reader := rlogs.BasicReader{
 		LogEntries: []*rlogs.LogEntry{
 			{
-				Psr: &parser.JSON{
-					Tag:             "ts",
-					TimestampField:  rlogs.String("ts"),
-					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+				Pipe: rlogs.Pipeline{
+					Psr: &parser.JSON{
+						Tag:             "ts",
+						TimestampField:  rlogs.String("ts"),
+						TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+					},
+					Ldr: &rlogs.S3LineLoader{},
 				},
-				Ldr: &rlogs.S3LineLoader{},
 				Src: &rlogs.AwsS3LogSource{
 					Region: "some-region",
 					Bucket: "some-bucket",

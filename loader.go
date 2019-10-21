@@ -13,11 +13,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Loader downloads object from cloud object storage and create MessageQueue(s)
-type Loader interface {
-	Load(src LogSource) chan *MessageQueue
-}
-
 func getObjectReader(src LogSource) (io.ReadCloser, error) {
 	s3src, ok := src.(*AwsS3LogSource)
 	if !ok {
