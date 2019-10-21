@@ -10,40 +10,28 @@ import (
 )
 
 func TestCloudTrailParser(t *testing.T) {
-	lines := []string{
-		`version account-id interface-id srcaddr dstaddr srcport dstport protocol packets bytes start end action log-status`,
-		`2 1234567890 eni-0bdfe84b34abcdedf 10.10.102.238 10.10.163.10 43210 80 6 2 341 1554076587 1554076828 ACCEPT OK`,
-	}
-
+	// Sample original: https://docs.aws.amazon.com/awscloudtrail/latest/userguide/cloudtrail-log-file-examples.html
+	// NOTE: add one more cloudtrail record to .Records
+	msg := `{"Records":[{"eventVersion":"1.0","userIdentity":{"type":"IAMUser","principalId":"EX_PRINCIPAL_ID","arn":"arn:aws:iam::123456789012:user/Alice","accessKeyId":"EXAMPLE_KEY_ID","accountId":"123456789012","userName":"Alice"},"eventTime":"2014-03-06T21:22:54Z","eventSource":"ec2.amazonaws.com","eventName":"StartInstances","awsRegion":"us-east-2","sourceIPAddress":"205.251.233.176","userAgent":"ec2-api-tools 1.6.12.2","requestParameters":{"instancesSet":{"items":[{"instanceId":"i-ebeaf9e2"}]}},"responseElements":{"instancesSet":{"items":[{"instanceId":"i-ebeaf9e2","currentState":{"code":0,"name":"pending"},"previousState":{"code":80,"name":"stopped"}}]}}},{"eventVersion":"1.0","userIdentity":{"type":"IAMUser","principalId":"EX_PRINCIPAL_ID","arn":"arn:aws:iam::123456789012:user/Alice","accessKeyId":"EXAMPLE_KEY_ID","accountId":"123456789012","userName":"Alice"},"eventTime":"2014-03-06T21:32:54Z","eventSource":"ec2.amazonaws.com","eventName":"StartInstances","awsRegion":"us-east-2","sourceIPAddress":"205.251.233.176","userAgent":"ec2-api-tools 1.6.12.2","requestParameters":{"instancesSet":{"items":[{"instanceId":"i-ebeaf9e2"}]}},"responseElements":{"instancesSet":{"items":[{"instanceId":"i-ebeaf9e2","currentState":{"code":0,"name":"pending"},"previousState":{"code":80,"name":"stopped"}}]}}}]}`
 	src := &rlogs.AwsS3LogSource{Region: "test-r", Bucket: "test-b", Key: "test-k"}
-	psr := parser.VpcFlowLogs{}
+	psr := parser.CloudTrail{}
 
 	logs, err := psr.Parse(&rlogs.MessageQueue{
-		Raw: []byte(lines[0]),
+		Raw: []byte(msg),
 		Src: src,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, 0, len(logs))
+	assert.Equal(t, 2, len(logs))
 
-	logs, err = psr.Parse(&rlogs.MessageQueue{
-		Raw: []byte(lines[1]),
-		Src: src,
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(logs))
-	log := logs[0].Values.(*parser.VpcFlowLog)
-	assert.Equal(t, "2", log.Version)
-	assert.Equal(t, "1234567890", log.AccountID)
-	assert.Equal(t, "eni-0bdfe84b34abcdedf", log.InterfaceID)
-	assert.Equal(t, "10.10.102.238", log.SrcAddr)
-	assert.Equal(t, "10.10.163.10", log.DstAddr)
-	assert.Equal(t, "43210", log.SrcPort)
-	assert.Equal(t, "80", log.DstPort)
-	assert.Equal(t, "6", log.Protocol)
-	assert.Equal(t, "2", log.Packets)
-	assert.Equal(t, "341", log.Bytes)
-	assert.Equal(t, "1554076587", log.Start)
-	assert.Equal(t, "1554076828", log.End)
-	assert.Equal(t, "ACCEPT", log.Action)
-	assert.Equal(t, "OK", log.LogStatus)
+	rec := logs[0].Values.(*parser.CloudTrailRecord)
+	assert.Equal(t, "2014-03-06T21:22:54", logs[0].Timestamp.Format("2006-01-02T15:04:05"))
+	assert.Equal(t, "aws.cloudtrail", logs[0].Tag)
+
+	assert.Equal(t, "1.0", rec.EventVersion)
+	assert.Equal(t, "EX_PRINCIPAL_ID", rec.UserIdentity.PrincipalID)
+	assert.Equal(t, "Alice", rec.UserIdentity.UserName)
+	_, ok := rec.RequestParameters["instancesSet"]
+	assert.True(t, ok)
+	_, ok = rec.ResponseElements["instancesSet"]
+	assert.True(t, ok)
 }
