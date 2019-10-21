@@ -5,8 +5,8 @@ import "time"
 // LogQueue is message queue between Reader and main procedure.
 // It includes both of LogRecord and Error but should be set either one.
 type LogQueue struct {
-	Log *LogRecord
-	Err error
+	Log   *LogRecord
+	Error error
 }
 
 // LogRecord has not only log message (original log) but also parsed meta data.
@@ -27,8 +27,8 @@ type LogRecord struct {
 
 // MessageQueue is a queue bring raw log message and sequence between Loader and Parser
 type MessageQueue struct {
-	Err error
-	Raw []byte
-	Seq int
-	Src LogSource
+	Error error
+	Raw   []byte
+	Seq   int
+	Src   LogSource
 }
