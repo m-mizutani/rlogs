@@ -100,11 +100,6 @@ func (x *CloudTrail) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) 
 			return nil, errors.Wrapf(err, "Fail to parse timestamp of CloudTrail: %v", record.EventTime)
 		}
 
-		var v interface{}
-		if err := json.Unmarshal(logmsg, &v); err != nil {
-			return nil, errors.Wrap(err, "Fail to parse CloudTrail logs for encodable object")
-		}
-
 		log := rlogs.LogRecord{
 			Seq:       idx,
 			Values:    &record,
