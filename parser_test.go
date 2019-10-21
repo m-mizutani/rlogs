@@ -43,7 +43,7 @@ func TestJSONParserUnixtime(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(logs))
 	assert.Equal(t, 21, logs[0].Timestamp.Day())
-	assert.Equal(t, 13, logs[0].Timestamp.Hour())
+	assert.Equal(t, 4, logs[0].Timestamp.Hour())
 }
 
 func TestJSONParserUnixtimeMilliSeconds(t *testing.T) {
@@ -58,7 +58,7 @@ func TestJSONParserUnixtimeMilliSeconds(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, len(logs))
 	assert.Equal(t, 21, logs[0].Timestamp.Day())
-	assert.Equal(t, 13, logs[0].Timestamp.Hour())
+	assert.Equal(t, 4, logs[0].Timestamp.Hour())
 }
 
 func TestJSONParserNoTimestampField(t *testing.T) {

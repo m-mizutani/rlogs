@@ -34,13 +34,13 @@ func (x *JSONParser) Parse(msg *MessageQueue) ([]*LogRecord, error) {
 	var t time.Time
 	if field := x.UnixtimeField; field != nil {
 		if ts, ok := value[*field].(float64); ok {
-			t = time.Unix(int64(ts), 0)
+			t = time.Unix(int64(ts), 0).UTC()
 		} else {
 			return nil, fmt.Errorf("No unixtime field (%s): %v", *field, value)
 		}
 	} else if field := x.UnixtimeMilliField; field != nil {
 		if ts, ok := value[*field].(float64); ok {
-			t = time.Unix(int64(ts)/1000, (int64(ts)%1000)*1000)
+			t = time.Unix(int64(ts)/1000, (int64(ts)%1000)*1000).UTC()
 		} else {
 			return nil, fmt.Errorf("No unixtime milliseconds field (%s): %v", *field, value)
 		}
@@ -51,7 +51,7 @@ func (x *JSONParser) Parse(msg *MessageQueue) ([]*LogRecord, error) {
 
 		if ts, ok := value[*field].(string); ok {
 			if p, err := time.Parse(*x.TimestampFormat, ts); err == nil {
-				t = p
+				t = p.UTC()
 			} else {
 				return nil, errors.Wrapf(err, "Fail to parse timestamp field by format '%s': %v", *x.TimestampFormat, value)
 			}
