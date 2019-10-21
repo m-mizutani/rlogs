@@ -131,6 +131,11 @@ func (x *S3FileLoader) Load(src LogSource) chan *MessageQueue {
 		defer r.Close()
 
 		raw, err := ioutil.ReadAll(r)
+		if err != nil {
+			chMsg <- &MessageQueue{Error: errors.Wrap(err, "Fail to read S3 object data")}
+			return
+		}
+
 		chMsg <- &MessageQueue{
 			Raw: raw,
 			Seq: 0,
