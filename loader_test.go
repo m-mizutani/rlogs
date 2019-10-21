@@ -58,3 +58,24 @@ func TestS3LineLoaderBasic(t *testing.T) {
 	assert.Equal(t, "orange", string(messages[1].Raw))
 	assert.Equal(t, "red", string(messages[2].Raw))
 }
+
+func TestS3FileLoaderBasic(t *testing.T) {
+	dummy := dummyS3ClientForS3Loader{}
+	rlogs.InjectNewS3Client(&dummy)
+	defer rlogs.FixNewS3Client()
+
+	ldr := rlogs.S3FileLoader{}
+
+	var messages []*rlogs.MessageQueue
+	for msg := range ldr.Load(&rlogs.AwsS3LogSource{
+		Region: "ap-northeast-1",
+		Bucket: "my-own-bucket",
+		Key:    "my/log/data.json",
+	}) {
+		messages = append(messages, msg)
+	}
+
+	assert.Equal(t, 1, len(messages))
+	assert.NoError(t, messages[0].Error)
+	assert.Equal(t, "blue\norange\nred\n", string(messages[0].Raw))
+}

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -15,6 +16,40 @@ import (
 // Loader downloads object from cloud object storage and create MessageQueue(s)
 type Loader interface {
 	Load(src LogSource) chan *MessageQueue
+}
+
+func getObjectReader(src LogSource) (io.ReadCloser, error) {
+	s3src, ok := src.(*AwsS3LogSource)
+	if !ok {
+		return nil, fmt.Errorf("S3LineLoader accepts only AwsS3LogSource: %v", src)
+	}
+
+	s3client := newS3Client(s3src.Region)
+	resp, err := s3client.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(s3src.Bucket),
+		Key:    aws.String(s3src.Key),
+	})
+
+	if err != nil {
+		return nil, errors.Wrap(err, "Fail to get object")
+	}
+
+	var r io.ReadCloser
+	if resp.ContentType == nil {
+		r = resp.Body
+	} else if *resp.ContentType == "application/x-gzip" ||
+		(*resp.ContentType == "binary/octet-stream" &&
+			strings.HasSuffix(s3src.Key, ".gz")) {
+		gr, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, errors.Wrap(err, "Fail to create a new gzip reader")
+		}
+		r = gr
+	} else {
+		r = resp.Body
+	}
+
+	return r, nil
 }
 
 const (
@@ -35,36 +70,10 @@ func (x *S3LineLoader) Load(src LogSource) chan *MessageQueue {
 	go func() {
 		defer close(chMsg)
 
-		s3src, ok := src.(*AwsS3LogSource)
-		if !ok {
-			chMsg <- &MessageQueue{Error: fmt.Errorf("S3LineLoader accepts only AwsS3LogSource: %v", src)}
-		}
-
-		s3client := newS3Client(s3src.Region)
-		resp, err := s3client.GetObject(&s3.GetObjectInput{
-			Bucket: aws.String(s3src.Bucket),
-			Key:    aws.String(s3src.Key),
-		})
-
+		r, err := getObjectReader(src)
 		if err != nil {
-			chMsg <- &MessageQueue{Error: errors.Wrap(err, "Fail to get object")}
+			chMsg <- &MessageQueue{Error: err}
 			return
-		}
-
-		var r io.ReadCloser
-		if resp.ContentType == nil {
-			r = resp.Body
-		} else if *resp.ContentType == "application/x-gzip" ||
-			(*resp.ContentType == "binary/octet-stream" &&
-				strings.HasSuffix(s3src.Key, ".gz")) {
-			gr, err := gzip.NewReader(resp.Body)
-			if err != nil {
-				chMsg <- &MessageQueue{Error: errors.Wrap(err, "Fail to create a new gzip reader")}
-				return
-			}
-			r = gr
-		} else {
-			r = resp.Body
 		}
 		defer r.Close()
 
@@ -93,6 +102,34 @@ func (x *S3LineLoader) Load(src LogSource) chan *MessageQueue {
 			}
 
 			seq++
+		}
+	}()
+
+	return chMsg
+}
+
+// S3FileLoader is for whole file data (not line delimitered) on AWS S3
+type S3FileLoader struct{}
+
+// Load of S3LineLoader reads a log object as one log message
+func (x *S3FileLoader) Load(src LogSource) chan *MessageQueue {
+	chMsg := make(chan *MessageQueue)
+
+	go func() {
+		defer close(chMsg)
+
+		r, err := getObjectReader(src)
+		if err != nil {
+			chMsg <- &MessageQueue{Error: err}
+			return
+		}
+		defer r.Close()
+
+		raw, err := ioutil.ReadAll(r)
+		chMsg <- &MessageQueue{
+			Raw: raw,
+			Seq: 0,
+			Src: src,
 		}
 	}()
 
