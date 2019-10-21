@@ -34,7 +34,7 @@ type VpcFlowLog struct {
 type VpcFlowLogs struct{}
 
 // Parse of VpcFlowLogs parses flow log with ignoring header.
-func (x *VpcFlowLog) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
+func (x *VpcFlowLogs) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
 	raw := string(msg.Raw)
 	row := strings.Split(raw, " ")
 	if len(row) != 14 {
@@ -50,6 +50,7 @@ func (x *VpcFlowLog) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) 
 	}
 
 	log := VpcFlowLog{
+		Version:     row[0],
 		AccountID:   row[1],
 		InterfaceID: row[2],
 		SrcAddr:     row[3],
@@ -75,7 +76,7 @@ func (x *VpcFlowLog) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) 
 			Tag:       "aws.vpcflowlogs",
 			Timestamp: ts,
 			Raw:       msg.Raw,
-			Values:    log,
+			Values:    &log,
 			Seq:       msg.Seq,
 			Src:       msg.Src,
 		},
