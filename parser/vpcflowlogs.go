@@ -10,7 +10,7 @@ import (
 )
 
 // VpcFlowLog is traffic record generated AWS VPC FlowLogs.
-// Type of fields taht may have number is defined as string intentionally
+// Type of fields that may have number is defined as string intentionally
 // because there is non number values such as "-" in SrcPort, DstPort and so on.
 type VpcFlowLog struct {
 	Version     string
