@@ -38,7 +38,7 @@ func (x *BasicReader) Read(src LogSource) chan *LogQueue {
 
 	if entry == nil {
 		ch <- &LogQueue{Error: fmt.Errorf("No matched LogEntry for %v", src)}
-		return nil
+		return ch
 	}
 
 	go entry.Pipe.Run(src, ch)

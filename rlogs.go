@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 // LogQueue is message queue between Reader and main procedure.
@@ -67,7 +68,7 @@ func (x *Pipeline) Run(src LogSource, ch chan *LogQueue) {
 
 		logs, err := x.Psr.Parse(msg)
 		if err != nil {
-			ch <- &LogQueue{Error: errors.Wrap(msg.Error, "Fail to parse log message")}
+			ch <- &LogQueue{Error: errors.Wrap(err, "Fail to parse log message")}
 			return
 		}
 
@@ -75,6 +76,13 @@ func (x *Pipeline) Run(src LogSource, ch chan *LogQueue) {
 			ch <- &LogQueue{Log: logs[i]}
 		}
 	}
+}
+
+// Logger is logrus based logger and exposed to be controlled from outside also.
+var Logger = logrus.New()
+
+func init() {
+	Logger.SetLevel(logrus.DebugLevel)
 }
 
 // String function just converts string to string pointer
