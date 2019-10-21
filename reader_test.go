@@ -127,9 +127,10 @@ func ExampleBasicReader() {
 		if q.Error != nil {
 			log.Fatal(q.Error)
 		}
-		fmt.Printf("[log] tag=%s time=%s values=%v\n", q.Log.Tag, q.Log.Timestamp, q.Log.Values)
+		values := q.Log.Values.(map[string]interface{})
+		fmt.Printf("[log] tag=%s time=%s src=%v\n", q.Log.Tag, q.Log.Timestamp, values["src"])
 	}
 	// Output:
-	// [log] tag=ts time=2019-10-10 10:00:00 +0000 UTC values=map[path:/hello port:34567 src:10.1.2.3 ts:2019-10-10T10:00:00]
-	// [log] tag=ts time=2019-10-10 10:00:02 +0000 UTC values=map[path:/world port:45678 src:10.2.3.4 ts:2019-10-10T10:00:02]
+	// [log] tag=ts time=2019-10-10 10:00:00 +0000 UTC src=10.1.2.3
+	// [log] tag=ts time=2019-10-10 10:00:02 +0000 UTC src=10.2.3.4
 }
