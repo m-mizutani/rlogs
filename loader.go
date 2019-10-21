@@ -103,6 +103,11 @@ func (x *S3LineLoader) Load(src LogSource) chan *MessageQueue {
 
 			seq++
 		}
+
+		if err := scanner.Err(); err != nil {
+			chMsg <- &MessageQueue{Error: err}
+			return
+		}
 	}()
 
 	return chMsg

@@ -59,6 +59,30 @@ func TestS3LineLoaderBasic(t *testing.T) {
 	assert.Equal(t, "red", string(messages[2].Raw))
 }
 
+func TestS3LineLoaderShortBuffer(t *testing.T) {
+	dummy := dummyS3ClientForS3Loader{}
+	rlogs.InjectNewS3Client(&dummy)
+	defer rlogs.FixNewS3Client()
+
+	ldr := rlogs.S3LineLoader{
+		ScanBufferSize:  2,
+		ScanBufferLimit: 4,
+	}
+
+	var messages []*rlogs.MessageQueue
+	for msg := range ldr.Load(&rlogs.AwsS3LogSource{
+		Region: "ap-northeast-1",
+		Bucket: "my-own-bucket",
+		Key:    "my/log/data.json",
+	}) {
+		messages = append(messages, msg)
+	}
+
+	assert.Equal(t, 1, len(messages))
+	assert.Error(t, messages[0].Error)
+	assert.Contains(t, messages[0].Error.Error(), "token too long")
+}
+
 func TestS3FileLoaderBasic(t *testing.T) {
 	dummy := dummyS3ClientForS3Loader{}
 	rlogs.InjectNewS3Client(&dummy)
