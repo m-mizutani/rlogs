@@ -7,6 +7,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// Version of rlogs pacakge
+const Version = "v0.1.1"
+
 // LogQueue is message queue between Reader and main procedure.
 // It includes both of LogRecord and Error but should be set either one.
 type LogQueue struct {
