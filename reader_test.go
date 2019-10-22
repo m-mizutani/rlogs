@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type dummyS3ClientForBasicReader struct{}
+type dummyS3ClientForReader struct{}
 
-func (x *dummyS3ClientForBasicReader) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+func (x *dummyS3ClientForReader) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
 	if *input.Bucket != "your-bucket" {
 		return nil, fmt.Errorf("invalid bucket")
 	}
@@ -58,23 +58,21 @@ func makeTestPipeline() rlogs.Pipeline {
 	}
 }
 
-func TestBasicReader(t *testing.T) {
-	dummy := dummyS3ClientForBasicReader{}
+func TestReader(t *testing.T) {
+	dummy := dummyS3ClientForReader{}
 	rlogs.InjectNewS3Client(&dummy)
 	defer rlogs.FixNewS3Client()
 
-	reader := rlogs.BasicReader{
-		LogEntries: []*rlogs.LogEntry{
-			{
-				Pipe: makeTestPipeline(),
-				Src: &rlogs.AwsS3LogSource{
-					Region: "some-region",
-					Bucket: "your-bucket",
-					Key:    "magic/",
-				},
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: makeTestPipeline(),
+			Src: &rlogs.AwsS3LogSource{
+				Region: "some-region",
+				Bucket: "your-bucket",
+				Key:    "magic/",
 			},
 		},
-	}
+	})
 
 	ch := reader.Read(&rlogs.AwsS3LogSource{
 		Region: "some-region",
@@ -95,12 +93,12 @@ func TestBasicReader(t *testing.T) {
 	assert.Equal(t, "Blue", n4)
 }
 
-func TestBasicReaderNotFound(t *testing.T) {
-	dummy := dummyS3ClientForBasicReader{}
+func TestReaderNotFound(t *testing.T) {
+	dummy := dummyS3ClientForReader{}
 	rlogs.InjectNewS3Client(&dummy)
 	defer rlogs.FixNewS3Client()
 
-	reader := rlogs.BasicReader{
+	reader := rlogs.Reader{
 		LogEntries: []*rlogs.LogEntry{
 			{
 				Pipe: makeTestPipeline(),
@@ -122,9 +120,9 @@ func TestBasicReaderNotFound(t *testing.T) {
 	assert.Error(t, q.Error)
 }
 
-func ExampleBasicReader() {
+func ExampleReader() {
 	// To avoid accessing actual S3.
-	dummy := dummyS3ClientForBasicReader{}
+	dummy := dummyS3ClientForReader{}
 	rlogs.InjectNewS3Client(&dummy)
 	defer rlogs.FixNewS3Client()
 
@@ -138,18 +136,16 @@ func ExampleBasicReader() {
 		Ldr: &rlogs.S3LineLoader{},
 	}
 
-	reader := rlogs.BasicReader{
-		LogEntries: []*rlogs.LogEntry{
-			{
-				Pipe: pipeline,
-				Src: &rlogs.AwsS3LogSource{
-					Region: "ap-northeast-1",
-					Bucket: "your-bucket",
-					Key:    "http/",
-				},
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: pipeline,
+			Src: &rlogs.AwsS3LogSource{
+				Region: "ap-northeast-1",
+				Bucket: "your-bucket",
+				Key:    "http/",
 			},
 		},
-	}
+	})
 
 	// s3://your-bucket/http/log.json is following:
 	// {"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}

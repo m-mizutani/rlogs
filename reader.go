@@ -4,15 +4,17 @@ import (
 	"fmt"
 )
 
-// Reader is interface of log load and parse
-type Reader interface {
-	Read(src LogSource) chan *LogQueue
-}
-
-// BasicReader provides basic structured Reader with naive implementation
-type BasicReader struct {
+// Reader provides basic structured Reader with naive implementation
+type Reader struct {
 	LogEntries []*LogEntry
 	QueueSize  int
+}
+
+// NewReader is constructor of Reader
+func NewReader(entries []*LogEntry) *Reader {
+	return &Reader{
+		LogEntries: entries,
+	}
 }
 
 // LogEntry is a pair of Loader and Paresr
@@ -21,7 +23,7 @@ type LogEntry struct {
 	Pipe Pipeline
 }
 
-func (x *BasicReader) Read(src LogSource) chan *LogQueue {
+func (x *Reader) Read(src LogSource) chan *LogQueue {
 	queueSize := 128
 	if x.QueueSize > 0 {
 		queueSize = x.QueueSize
