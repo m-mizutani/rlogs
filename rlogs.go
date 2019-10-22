@@ -63,6 +63,10 @@ func (x *Pipeline) Run(src LogSource, ch chan *LogQueue) {
 	defer close(ch)
 
 	msgch := x.Ldr.Load(src)
+	if msgch == nil {
+		return // ignore
+	}
+
 	for msg := range msgch {
 		if msg.Error != nil {
 			ch <- &LogQueue{Error: errors.Wrap(msg.Error, "Fail to load log message")}
