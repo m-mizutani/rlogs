@@ -17,18 +17,16 @@ func main() {
 		Ldr: &rlogs.S3LineLoader{},
 	}
 
-	reader := rlogs.BasicReader{
-		LogEntries: []*rlogs.LogEntry{
-			{
-				Pipe: pipeline,
-				Src: &rlogs.AwsS3LogSource{
-					Region: "ap-northeast-1",
-					Bucket: "your-bucket",
-					Key:    "http/",
-				},
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: pipeline,
+			Src: &rlogs.AwsS3LogSource{
+				Region: "ap-northeast-1",
+				Bucket: "your-bucket",
+				Key:    "http/",
 			},
 		},
-	}
+	})
 
 	// s3://your-bucket/http/log.json is following:
 	// {"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}
