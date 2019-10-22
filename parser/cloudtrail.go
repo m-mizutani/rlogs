@@ -74,6 +74,14 @@ type CloudTrailResource struct {
 // CloudTrail is parser of AWS CloudTrail logs.
 type CloudTrail struct{}
 
+// NewCloudTrailPipeline provides set of Parser and Loader for CloudTrail logs
+func NewCloudTrailPipeline() rlogs.Pipeline {
+	return rlogs.Pipeline{
+		Psr: &CloudTrail{},
+		Ldr: &rlogs.S3FileLoader{},
+	}
+}
+
 // Parse converts CloudTrail logs that are put to S3 from CloudTrail directly.
 func (x *CloudTrail) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
 	var logs []*rlogs.LogRecord
