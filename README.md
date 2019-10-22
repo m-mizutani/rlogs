@@ -8,31 +8,32 @@
 
 ```go
 func main() {
-	// Example is below
-	reader := rlogs.BasicReader{
-		LogEntries: []*rlogs.LogEntry{
-			{
-				Psr: &parser.JSON{
-					Tag:             "ts",
-					TimestampField:  rlogs.String("ts"),
-					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
-				},
-				Ldr: &rlogs.S3LineLoader{},
-				Src: &rlogs.AwsS3LogSource{
-					Region: "ap-northeast-1",
-					Bucket: "your-bucket",
-					Key:    "http/",
-				},
+	pipeline := rlogs.Pipeline{
+		Psr: &parser.JSON{
+			Tag:             "ts",
+			TimestampField:  rlogs.String("ts"),
+			TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+		},
+		Ldr: &rlogs.S3LineLoader{},
+	}
+
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: pipeline,
+			Src: &rlogs.AwsS3LogSource{
+				Region: "ap-northeast-1",
+				Bucket: "your-bucket",
+				Key:    "http/",
 			},
 		},
-	}
+	})
 
 	// s3://your-bucket/http/log.json is following:
 	// {"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}
 	// {"ts":"2019-10-10T10:00:02","src":"10.2.3.4","port":45678,"path":"/world"}
 
 	ch := reader.Read(&rlogs.AwsS3LogSource{
-		Region: "ap-northeast-1",
+		Region: "some-region",
 		Bucket: "your-bucket",
 		Key:    "http/log.json",
 	})

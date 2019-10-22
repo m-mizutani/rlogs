@@ -13,10 +13,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type dummyS3ClientForBasicReader struct{}
+type dummyS3ClientForReader struct{}
 
-func (x *dummyS3ClientForBasicReader) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
-	if *input.Bucket != "some-bucket" {
+func (x *dummyS3ClientForReader) GetObject(input *s3.GetObjectInput) (*s3.GetObjectOutput, error) {
+	if *input.Bucket != "your-bucket" {
 		return nil, fmt.Errorf("invalid bucket")
 	}
 
@@ -47,32 +47,36 @@ func (x *dummyS3ClientForBasicReader) GetObject(input *s3.GetObjectInput) (*s3.G
 	}
 }
 
-func TestBasicReader(t *testing.T) {
-	dummy := dummyS3ClientForBasicReader{}
+func makeTestPipeline() rlogs.Pipeline {
+	return rlogs.Pipeline{
+		Psr: &parser.JSON{
+			Tag:             "ts",
+			TimestampField:  rlogs.String("ts"),
+			TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+		},
+		Ldr: &rlogs.S3LineLoader{},
+	}
+}
+
+func TestReader(t *testing.T) {
+	dummy := dummyS3ClientForReader{}
 	rlogs.InjectNewS3Client(&dummy)
 	defer rlogs.FixNewS3Client()
 
-	reader := rlogs.BasicReader{
-		LogEntries: []*rlogs.LogEntry{
-			{
-				Psr: &parser.JSON{
-					Tag:             "ts",
-					TimestampField:  rlogs.String("ts"),
-					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
-				},
-				Ldr: &rlogs.S3LineLoader{},
-				Src: &rlogs.AwsS3LogSource{
-					Region: "some-region",
-					Bucket: "some-bucket",
-					Key:    "magic/",
-				},
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: makeTestPipeline(),
+			Src: &rlogs.AwsS3LogSource{
+				Region: "some-region",
+				Bucket: "your-bucket",
+				Key:    "magic/",
 			},
 		},
-	}
+	})
 
 	ch := reader.Read(&rlogs.AwsS3LogSource{
 		Region: "some-region",
-		Bucket: "some-bucket",
+		Bucket: "your-bucket",
 		Key:    "magic/history.json",
 	})
 	var logs []*rlogs.LogRecord
@@ -89,38 +93,67 @@ func TestBasicReader(t *testing.T) {
 	assert.Equal(t, "Blue", n4)
 }
 
-func ExampleBasicReader() {
-	// To avoid accessing actual S3.
-	dummy := dummyS3ClientForBasicReader{}
+func TestReaderNotFound(t *testing.T) {
+	dummy := dummyS3ClientForReader{}
 	rlogs.InjectNewS3Client(&dummy)
 	defer rlogs.FixNewS3Client()
 
-	// Example is below
-	reader := rlogs.BasicReader{
+	reader := rlogs.Reader{
 		LogEntries: []*rlogs.LogEntry{
 			{
-				Psr: &parser.JSON{
-					Tag:             "ts",
-					TimestampField:  rlogs.String("ts"),
-					TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
-				},
-				Ldr: &rlogs.S3LineLoader{},
+				Pipe: makeTestPipeline(),
 				Src: &rlogs.AwsS3LogSource{
-					Region: "some-region",
-					Bucket: "some-bucket",
+					Region: "ap-northeast-1",
+					Bucket: "your-bucket",
 					Key:    "http/",
 				},
 			},
 		},
 	}
 
-	// s3://some-bucket/http/log.json is following:
+	ch := reader.Read(&rlogs.AwsS3LogSource{
+		Region: "some-region",
+		Bucket: "your-bucket",
+		Key:    "key-is-not-found",
+	})
+	q := <-ch
+	assert.Error(t, q.Error)
+}
+
+func ExampleReader() {
+	// To avoid accessing actual S3.
+	dummy := dummyS3ClientForReader{}
+	rlogs.InjectNewS3Client(&dummy)
+	defer rlogs.FixNewS3Client()
+
+	// Example is below
+	pipeline := rlogs.Pipeline{
+		Psr: &parser.JSON{
+			Tag:             "ts",
+			TimestampField:  rlogs.String("ts"),
+			TimestampFormat: rlogs.String("2006-01-02T15:04:05"),
+		},
+		Ldr: &rlogs.S3LineLoader{},
+	}
+
+	reader := rlogs.NewReader([]*rlogs.LogEntry{
+		{
+			Pipe: pipeline,
+			Src: &rlogs.AwsS3LogSource{
+				Region: "ap-northeast-1",
+				Bucket: "your-bucket",
+				Key:    "http/",
+			},
+		},
+	})
+
+	// s3://your-bucket/http/log.json is following:
 	// {"ts":"2019-10-10T10:00:00","src":"10.1.2.3","port":34567,"path":"/hello"}
 	// {"ts":"2019-10-10T10:00:02","src":"10.2.3.4","port":45678,"path":"/world"}
 
 	ch := reader.Read(&rlogs.AwsS3LogSource{
-		Region: "some-region",
-		Bucket: "some-bucket",
+		Region: "ap-northeast-1",
+		Bucket: "your-bucket",
 		Key:    "http/log.json",
 	})
 

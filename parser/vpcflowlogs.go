@@ -10,7 +10,7 @@ import (
 )
 
 // VpcFlowLog is traffic record generated AWS VPC FlowLogs.
-// Type of fields taht may have number is defined as string intentionally
+// Type of fields that may have number is defined as string intentionally
 // because there is non number values such as "-" in SrcPort, DstPort and so on.
 type VpcFlowLog struct {
 	Version     string
@@ -32,6 +32,14 @@ type VpcFlowLog struct {
 // VpcFlowLogs is parser of VPC FlowLogs in AWS S3. The parser supports only S3 object
 // deliveried by VPC FlowLogs function directly.
 type VpcFlowLogs struct{}
+
+// NewVpcFlowLogsPipeline provides set of Parser and Loader for VPC FlowLogs
+func NewVpcFlowLogsPipeline() rlogs.Pipeline {
+	return rlogs.Pipeline{
+		Psr: &VpcFlowLogs{},
+		Ldr: &rlogs.S3LineLoader{},
+	}
+}
 
 // Parse of VpcFlowLogs parses flow log with ignoring header.
 func (x *VpcFlowLogs) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
