@@ -33,14 +33,6 @@ type VpcFlowLog struct {
 // deliveried by VPC FlowLogs function directly.
 type VpcFlowLogs struct{}
 
-// NewVpcFlowLogsPipeline provides set of Parser and Loader for VPC FlowLogs
-func NewVpcFlowLogsPipeline() rlogs.Pipeline {
-	return rlogs.Pipeline{
-		Psr: &VpcFlowLogs{},
-		Ldr: &rlogs.S3LineLoader{},
-	}
-}
-
 // Parse of VpcFlowLogs parses flow log with ignoring header.
 func (x *VpcFlowLogs) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
 	raw := string(msg.Raw)
