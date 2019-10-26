@@ -62,6 +62,21 @@ func TestJSONParserUnixtimeMilliSeconds(t *testing.T) {
 	assert.Equal(t, 4, logs[0].Timestamp.Hour())
 }
 
+func TestJSONParserUnixtimeString(t *testing.T) {
+	psr := parser.JSON{
+		UnixtimeStringField: rlogs.String("unix"),
+	}
+	logs, err := psr.Parse(&rlogs.MessageQueue{
+		Raw: []byte(`{"color":"blue","ts":"2019-10-19T04:44:44","unix":"1571630400"}`),
+		Src: &rlogs.AwsS3LogSource{Region: "test-r", Bucket: "test-b", Key: "test-k"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, len(logs))
+	assert.Equal(t, 21, logs[0].Timestamp.Day())
+	assert.Equal(t, 4, logs[0].Timestamp.Hour())
+}
+
 func TestJSONParserNoTimestampField(t *testing.T) {
 	psr := parser.JSON{}
 	_, err := psr.Parse(&rlogs.MessageQueue{
