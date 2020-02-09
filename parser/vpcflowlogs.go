@@ -27,48 +27,105 @@ type VpcFlowLog struct {
 	End         string
 	Action      string
 	LogStatus   string
+
+	// New for FlowLogs v3
+	InstanceID string
+	PktSrcAddr string
+	PktDstAddr string
+	SubnetID   string
+	TCPFlags   string
+	Type       string
+	VpcID      string
 }
 
 // VpcFlowLogs is parser of VPC FlowLogs in AWS S3. The parser supports only S3 object
 // deliveried by VPC FlowLogs function directly.
-type VpcFlowLogs struct{}
+type VpcFlowLogs struct {
+	index []int
+}
+
+var vpcFlowLogsIndex = map[string]int{
+	"version":      0,
+	"account-id":   1,
+	"interface-id": 2,
+	"srcaddr":      3,
+	"dstaddr":      4,
+	"srcport":      5,
+	"dstport":      6,
+	"protocol":     7,
+	"packets":      8,
+	"bytes":        9,
+	"start":        10,
+	"end":          11,
+	"action":       12,
+	"log-status":   13,
+	"instance-id":  14,
+	"pkt-srcaddr":  15,
+	"pkt-dstaddr":  16,
+	"subnet-id":    17,
+	"tcp-flags":    18,
+	"type":         19,
+	"vpc-id":       20,
+}
 
 // Parse of VpcFlowLogs parses flow log with ignoring header.
 func (x *VpcFlowLogs) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) {
 	raw := string(msg.Raw)
 	row := strings.Split(raw, " ")
-	if len(row) != 14 {
-		return nil, fmt.Errorf("Invalid row length (expected 14, but %d)", len(row))
-	}
 
-	if row[0] == "version" {
+	if msg.Seq == 0 { // header
+		x.index = []int{}
+		for i, r := range row {
+			idx, ok := vpcFlowLogsIndex[r]
+			if !ok {
+				return nil, fmt.Errorf("Invalid header item: %s at %d column", r, i)
+			}
+
+			x.index = append(x.index, idx)
+		}
+
 		return nil, nil // Skip header
 	}
 
-	if row[0] != "2" {
-		return nil, fmt.Errorf("Unsupported VPC Flow Logs version: %s", row[0])
+	if len(row) != len(x.index) {
+		return nil, fmt.Errorf("Invalid row length (expected %d, but %d)", len(x.index), len(row))
+	}
+
+	buf := make([]string, len(vpcFlowLogsIndex))
+	for i := range row {
+		buf[x.index[i]] = row[i]
 	}
 
 	log := VpcFlowLog{
-		Version:     row[0],
-		AccountID:   row[1],
-		InterfaceID: row[2],
-		SrcAddr:     row[3],
-		DstAddr:     row[4],
-		SrcPort:     row[5],
-		DstPort:     row[6],
-		Protocol:    row[7],
-		Packets:     row[8],
-		Bytes:       row[9],
-		Start:       row[10],
-		End:         row[11],
-		Action:      row[12],
-		LogStatus:   row[13],
+		Version:     buf[0],
+		AccountID:   buf[1],
+		InterfaceID: buf[2],
+		SrcAddr:     buf[3],
+		DstAddr:     buf[4],
+		SrcPort:     buf[5],
+		DstPort:     buf[6],
+		Protocol:    buf[7],
+		Packets:     buf[8],
+		Bytes:       buf[9],
+		Start:       buf[10],
+		End:         buf[11],
+		Action:      buf[12],
+		LogStatus:   buf[13],
+
+		InstanceID: buf[14],
+		PktSrcAddr: buf[15],
+		PktDstAddr: buf[16],
+		SubnetID:   buf[17],
+		TCPFlags:   buf[18],
+		Type:       buf[19],
+		VpcID:      buf[20],
 	}
 
 	var ts time.Time
-	if n10, err := strconv.Atoi(row[10]); err == nil {
-		ts = time.Unix(int64(n10), 0)
+	if log.Start != "" {
+		if n10, err := strconv.Atoi(log.Start); err == nil {
+			ts = time.Unix(int64(n10), 0)
+		}
 	}
 
 	return []*rlogs.LogRecord{
