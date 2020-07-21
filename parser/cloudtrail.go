@@ -12,64 +12,7 @@ type cloudTrailEventWrapper struct {
 	Records []interface{} `json:"Records"`
 }
 
-// CloudTrailRecord is main log record of CloudTrail.
-type CloudTrailRecord struct {
-	APIVersion         string                 `json:"apiVersion"`
-	AwsRegion          string                 `json:"awsRegion"`
-	ErrorCode          string                 `json:"errorCode"`
-	ErrorMessage       string                 `json:"errorMessage"`
-	EventID            string                 `json:"eventID"`
-	EventName          string                 `json:"eventName"`
-	EventSource        string                 `json:"eventSource"`
-	EventTime          string                 `json:"eventTime"`
-	EventType          string                 `json:"eventType"`
-	EventVersion       string                 `json:"eventVersion"`
-	ReadOnly           bool                   `json:"readOnly"`
-	RecipientAccountID string                 `json:"recipientAccountId"`
-	RequestID          string                 `json:"requestID"`
-	RequestParameters  map[string]interface{} `json:"requestParameters"`
-	Resources          []CloudTrailResource   `json:"resources"`
-	ResponseElements   map[string]interface{} `json:"responseElements"`
-	SharedEventID      string                 `json:"sharedEventID"`
-	SourceIPAddress    string                 `json:"sourceIPAddress"`
-	UserAgent          string                 `json:"userAgent"`
-	UserIdentity       CloudTrailUserIdentity `json:"userIdentity"`
-	VpcEndpointID      string                 `json:"vpcEndpointId"`
-}
-
-// CloudTrailUserIdentity indicates identity of event subject.
-type CloudTrailUserIdentity struct {
-	AccessKeyID    string                   `json:"accessKeyId"`
-	AccountID      string                   `json:"accountId"`
-	Arn            string                   `json:"arn"`
-	InvokedBy      string                   `json:"invokedBy"`
-	PrincipalID    string                   `json:"principalId"`
-	SessionContext CloudTrailSessionContext `json:"sessionContext"`
-	Type           string                   `json:"type"`
-	UserName       string                   `json:"userName"`
-}
-
-// CloudTrailSessionContext indicates AWS session information
-type CloudTrailSessionContext struct {
-	Attributes struct {
-		CreationDate     string `json:"creationDate"`
-		MfaAuthenticated string `json:"mfaAuthenticated"`
-	} `json:"attributes"`
-	SessionIssuer struct {
-		AccountID   string `json:"accountId"`
-		Arn         string `json:"arn"`
-		PrincipalID string `json:"principalId"`
-		Type        string `json:"type"`
-		UserName    string `json:"userName"`
-	} `json:"sessionIssuer"`
-}
-
-// CloudTrailResource indicates target resource(s)
-type CloudTrailResource struct {
-	Arn       string `json:"ARN"`
-	AccountID string `json:"accountId"`
-	Type      string `json:"type"`
-}
+type CloudTrailRecord map[string]interface{}
 
 // CloudTrail is parser of AWS CloudTrail logs.
 type CloudTrail struct{}
@@ -95,14 +38,14 @@ func (x *CloudTrail) Parse(msg *rlogs.MessageQueue) ([]*rlogs.LogRecord, error) 
 		}
 
 		// 2018-12-18T00:07:21Z
-		ts, err := time.Parse("2006-01-02T15:04:05Z", record.EventTime)
+		ts, err := time.Parse("2006-01-02T15:04:05Z", record["eventTime"].(string))
 		if err != nil {
-			return nil, errors.Wrapf(err, "Fail to parse timestamp of CloudTrail: %v", record.EventTime)
+			return nil, errors.Wrapf(err, "Fail to parse timestamp of CloudTrail: %v", record["eventTime"].(string))
 		}
 
 		log := rlogs.LogRecord{
 			Seq:       idx,
-			Values:    &record,
+			Values:    record,
 			Raw:       logmsg,
 			Timestamp: ts,
 			Tag:       "aws.cloudtrail",

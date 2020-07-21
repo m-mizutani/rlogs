@@ -23,15 +23,15 @@ func TestCloudTrailParser(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 2, len(logs))
 
-	rec := logs[0].Values.(*parser.CloudTrailRecord)
+	rec := logs[0].Values.(parser.CloudTrailRecord)
 	assert.Equal(t, "2014-03-06T21:22:54", logs[0].Timestamp.Format("2006-01-02T15:04:05"))
 	assert.Equal(t, "aws.cloudtrail", logs[0].Tag)
 
-	assert.Equal(t, "1.0", rec.EventVersion)
-	assert.Equal(t, "EX_PRINCIPAL_ID", rec.UserIdentity.PrincipalID)
-	assert.Equal(t, "Alice", rec.UserIdentity.UserName)
-	_, ok := rec.RequestParameters["instancesSet"]
+	assert.Equal(t, "1.0", rec["eventVersion"])
+	assert.Equal(t, "EX_PRINCIPAL_ID", rec["userIdentity"].(map[string]interface{})["principalId"])
+	assert.Equal(t, "Alice", rec["userIdentity"].(map[string]interface{})["userName"])
+	_, ok := rec["requestParameters"].(map[string]interface{})["instancesSet"]
 	assert.True(t, ok)
-	_, ok = rec.ResponseElements["instancesSet"]
+	_, ok = rec["responseElements"].(map[string]interface{})["instancesSet"]
 	assert.True(t, ok)
 }
