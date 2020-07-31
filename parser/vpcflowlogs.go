@@ -45,6 +45,7 @@ type VpcFlowLogs struct {
 }
 
 var vpcFlowLogsIndex = map[string]int{
+	// v2
 	"version":      0,
 	"account-id":   1,
 	"interface-id": 2,
@@ -59,13 +60,21 @@ var vpcFlowLogsIndex = map[string]int{
 	"end":          11,
 	"action":       12,
 	"log-status":   13,
-	"instance-id":  14,
-	"pkt-srcaddr":  15,
-	"pkt-dstaddr":  16,
-	"subnet-id":    17,
-	"tcp-flags":    18,
-	"type":         19,
-	"vpc-id":       20,
+
+	// v3
+	"instance-id": 14,
+	"pkt-srcaddr": 15,
+	"pkt-dstaddr": 16,
+	"subnet-id":   17,
+	"tcp-flags":   18,
+	"type":        19,
+	"vpc-id":      20,
+
+	// v4
+	"region":           21,
+	"az-id":            22,
+	"sublocation-type": 23,
+	"sublocation-id":   24,
 }
 
 // Parse of VpcFlowLogs parses flow log with ignoring header.
