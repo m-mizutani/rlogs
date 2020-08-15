@@ -89,7 +89,7 @@ func (x *Pipeline) Run(src LogSource, ch chan *LogQueue) {
 var Logger = logrus.New()
 
 func init() {
-	Logger.SetLevel(logrus.DebugLevel)
+	Logger.SetLevel(logrus.InfoLevel)
 }
 
 // String function just converts string to string pointer
