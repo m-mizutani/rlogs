@@ -19,7 +19,7 @@ func getObjectReader(src LogSource) (io.ReadCloser, error) {
 		return nil, fmt.Errorf("S3LineLoader accepts only AwsS3LogSource: %v", src)
 	}
 
-	s3client := newS3Client(s3src.Region)
+	s3client := NewS3Client(s3src.Region)
 	resp, err := s3client.GetObject(&s3.GetObjectInput{
 		Bucket: aws.String(s3src.Bucket),
 		Key:    aws.String(s3src.Key),
