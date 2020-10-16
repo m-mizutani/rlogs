@@ -69,13 +69,23 @@ func (x *Pipeline) Run(src LogSource, ch chan *LogQueue) {
 
 	for msg := range msgch {
 		if msg.Error != nil {
-			ch <- &LogQueue{Error: errors.Wrap(msg.Error, "Fail to load log message")}
+			ch <- &LogQueue{
+				Error: errors.Wrap(msg.Error, "Fail to load log message"),
+				Log: &LogRecord{
+					Raw: msg.Raw,
+				},
+			}
 			return
 		}
 
 		logs, err := x.Psr.Parse(msg)
 		if err != nil {
-			ch <- &LogQueue{Error: errors.Wrap(err, "Fail to parse log message")}
+			ch <- &LogQueue{
+				Error: errors.Wrap(err, "Fail to parse log message"),
+				Log: &LogRecord{
+					Raw: msg.Raw,
+				},
+			}
 			return
 		}
 
